@@ -110,33 +110,35 @@ def exportDomainHistory =
       listComment = commentApi.findComments(FindCommentsRequest.builder()
                           .baseResourceId(asset.getId())
                           .build()).getResults()
-      def commentArray = ""
+      
+      def commentArray = 0
+	  def definitions = ""        
+
       for (comment in listComment)
       {       
-
-        if(commentArray == ""){commentArray = commentArray + html2text(comment.getContent())}
-        else {commentArray = commentArray + "..." + html2text(comment.getContent())}         
-      }
-      
-      if(commentArray!="")
-      {
         row.Name = asset.getName()
         row.AssetType = asset.getType().getName()
-        row.Comment = commentArray
+        row.Comment = html2text(comment.getContent())
 
-        def definitionAsset = attributeApi.findAttributes(FindAttributesRequest.builder()
-                                                            .assetId(asset.getId())
-                                                            .typeIds([string2Uuid("00000000-0000-0000-0000-000000000202")])
-                                                            .limit(1)
-                                                            .build()).getResults()
-        def definitions = ""
-        for(attribute in definitionAsset)
+        if(commentArray == 0)
         {
-          definitions = html2text(attribute.getValueAsString())
-        }
-        row.Definition = definitions
-        rows.add(row)        
-      }                   
+	        def definitionAsset = attributeApi.findAttributes(FindAttributesRequest.builder()
+	                                                            .assetId(asset.getId())
+	                                                            .typeIds([string2Uuid("00000000-0000-0000-0000-000000000202")])
+	                                                            .limit(1)
+	                                                            .build()).getResults()	        
+	        for(attribute in definitionAsset)
+	        {
+	          definitions = html2text(attribute.getValueAsString())
+	        }
+       
+        }  
+	    row.Definition = definitions
+	    rows.add(row)               
+        commentArray = commentArray + 1        
+      }
+      
+                   
     }   
 
     populateSheet(newSheet, header, rows.flatten())
