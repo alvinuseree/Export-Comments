@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:activiti="http://activiti.org/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" typeLanguage="http://www.w3.org/2001/XMLSchema" expressionLanguage="http://www.w3.org/1999/XPath" targetNamespace="http://www.activiti.org/test">
+  <process id="CommentReport" name="Comment Report" isExecutable="true">
+    <documentation>Workflow that exports comments for assets.</documentation>
+    <startEvent id="startevent1" name="Start" activiti:initiator="startUser"></startEvent>
+    <scriptTask id="scripttask1" name="Export Activity" scriptFormat="groovy" activiti:autoStoreVariables="false">
+      <extensionElements>
+        <activiti:executionListener event="end" class="com.collibra.dgc.core.workflow.activiti.executionlistener.FlushExecutionListener"></activiti:executionListener>
+      </extensionElements>
+      <script>import java.io.FileOutputStream
+import org.slf4j.LoggerFactory
+import org.apache.poi.xssf.usermodel.XSSFSheet
+import org.apache.poi.xssf.usermodel.XSSFRow
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.apache.poi.xssf.usermodel.XSSFFont
+import org.apache.poi.xssf.usermodel.XSSFCellStyle
+import java.text.SimpleDateFormat
+import com.collibra.dgc.core.exceptions.DGCException
+import com.collibra.dgc.core.api.dto.file.AddFileRequest
+import com.collibra.dgc.core.api.dto.instance.attachment.AddAttachmentRequest
+import com.collibra.dgc.core.api.model.ResourceType
+import com.collibra.dgc.core.api.dto.instance.asset.FindAssetsRequest
+import com.collibra.dgc.core.api.dto.instance.comment.FindCommentsRequest
+import com.collibra.dgc.core.api.dto.instance.attribute.FindAttributesRequest
+import com.collibra.dgc.core.api.dto.LogicalOperator
+
+import org.jsoup.Jsoup
+
+public static String html2text(String html) 
+{
+    return Jsoup.parse(html).text()
+}
+
+def exportDomainHistory = 
+{
+  def exportHistory = 
+  {
+    exportFileSuffix = ".xlsx"
+    baseURL = applicationApi.getInfo().getBaseUrl()
+    exportUser = userApi.getCurrentUser().get().getUserName()
+
+    workbook = new XSSFWorkbook()
+    newSheet = workbook.createSheet("Comments") 
+
+    XSSFFont boldFont= workbook.createFont();
+    boldFont.setBold(true);
+    XSSFCellStyle boldStyle = workbook.createCellStyle();
+    boldStyle.setFont(boldFont)
+
+    def populateSheet = {  newSheet, header, rows -&gt;
+      headerRow = newSheet.createRow(0)
+      header.keySet().eachWithIndex{ col, i -&gt;
+        headerCell = headerRow.createCell(i)
+        headerCell.setCellStyle(boldStyle)
+        headerCell.setCellValue(header[col].toString())
+      }
+
+      def rowNum = 1
+      rows.each { row -&gt;
+        def reportRow = newSheet.createRow(rowNum)
+        header.keySet().eachWithIndex{ col, i -&gt;
+          if(row.containsKey(col)){
+            val = row.get(col)
+          }else{
+            val = null
+          }
+          reportRow.createCell(i).setCellValue(val)
+        }
+        rowNum++
+      }
+    }
+
+    //Creating the export file
+    def createExportFile = {-&gt;
+
+      exportFileName = "Comment Report${exportFileSuffix}"
+      exportTempFile = File.createTempFile(exportUser,exportFileSuffix)
+
+      def fos =  new FileOutputStream(exportTempFile)
+      workbook.write(fos)
+      fos.close()
+
+      def exportFileId = fileApi.addFile(AddFileRequest.builder().name(exportFileName).fileStream(new FileInputStream(exportTempFile)).build()).getId()
+      exportFileUrl = "../rest/2.0/files/" + exportFileId
+
+      execution.setVariable('reportURL', exportFileUrl)
+      execution.setVariable('exportFileName', exportFileName)
+
+      loggerApi.info("***File Attached to resource ${item.id} \t ${reportURL} with name ${exportFileName} ***")     
+    }
+
+
+    
+    def rows = []
+    def header = [:]
+    header.Name = "Asset Name"
+    header.AssetType = "Asset Type"
+    header.Comment = "Asset Comments"
+    header.Definition = "Asset Definition"
+
+    loggerComponent.info("searching in ${item.id}")
+    allAssets = assetApi.findAssets(FindAssetsRequest.builder()
+                      .communityId(string2Uuid(item.id))
+                      .limit(1000000)
+                      .build()).getResults()
+
+    for (asset in allAssets)
+    {
+      def row = [:]
+      listComment = commentApi.findComments(FindCommentsRequest.builder()
+                          .baseResourceId(asset.getId())
+                          .build()).getResults()
+      def commentArray = ""
+      for (comment in listComment)
+      {       
+
+        if(commentArray == ""){commentArray = commentArray + html2text(comment.getContent())}
+        else {commentArray = commentArray + "..." + html2text(comment.getContent())}         
+      }
+      
+      if(commentArray!="")
+      {
+        row.Name = asset.getName()
+        row.AssetType = asset.getType().getName()
+        row.Comment = commentArray
+
+        def definitionAsset = attributeApi.findAttributes(FindAttributesRequest.builder()
+                                                            .assetId(asset.getId())
+                                                            .typeIds([string2Uuid("00000000-0000-0000-0000-000000000202")])
+                                                            .limit(1)
+                                                            .build()).getResults()
+        def definitions = ""
+        for(attribute in definitionAsset)
+        {
+          definitions = html2text(attribute.getValueAsString())
+        }
+        row.Definition = definitions
+        rows.add(row)        
+      }                   
+    }   
+
+    populateSheet(newSheet, header, rows.flatten())
+    createExportFile()
+    
+  }
+  exportHistory()
+}
+
+exportDomainHistory()
+loggerComponent.info("Finished creating file")
+ </script>
+    </scriptTask>
+    <endEvent id="endevent1" name="End"></endEvent>
+    <sequenceFlow id="flow1" sourceRef="startevent1" targetRef="scripttask1"></sequenceFlow>
+    <sequenceFlow id="flow2" sourceRef="scripttask1" targetRef="usertask1"></sequenceFlow>
+    <userTask id="usertask1" name="Download Comments" activiti:candidateUsers="user(${startUser})">
+      <documentation>&lt;b&gt;... &lt;br&gt; &lt;a href='${reportURL}' target=_blank&gt; ${exportFileName}&lt;/a&gt;&lt;/b&gt;</documentation>
+    </userTask>
+    <sequenceFlow id="flow3" sourceRef="usertask1" targetRef="endevent1"></sequenceFlow>
+    <boundaryEvent id="boundarytimer1" name="Timer" attachedToRef="usertask1" cancelActivity="true">
+      <timerEventDefinition>
+        <timeDuration>PT120S</timeDuration>
+      </timerEventDefinition>
+    </boundaryEvent>
+    <sequenceFlow id="flow4" sourceRef="boundarytimer1" targetRef="endevent1"></sequenceFlow>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_CommentReport">
+    <bpmndi:BPMNPlane bpmnElement="CommentReport" id="BPMNPlane_CommentReport">
+      <bpmndi:BPMNShape bpmnElement="startevent1" id="BPMNShape_startevent1">
+        <omgdc:Bounds height="35.0" width="35.0" x="170.0" y="160.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="scripttask1" id="BPMNShape_scripttask1">
+        <omgdc:Bounds height="55.0" width="105.0" x="250.0" y="150.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="endevent1" id="BPMNShape_endevent1">
+        <omgdc:Bounds height="35.0" width="35.0" x="530.0" y="160.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="usertask1" id="BPMNShape_usertask1">
+        <omgdc:Bounds height="55.0" width="105.0" x="390.0" y="150.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="boundarytimer1" id="BPMNShape_boundarytimer1">
+        <omgdc:Bounds height="30.0" width="30.0" x="428.0" y="131.0"></omgdc:Bounds>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="flow1" id="BPMNEdge_flow1">
+        <omgdi:waypoint x="205.0" y="177.0"></omgdi:waypoint>
+        <omgdi:waypoint x="250.0" y="177.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow2" id="BPMNEdge_flow2">
+        <omgdi:waypoint x="355.0" y="177.0"></omgdi:waypoint>
+        <omgdi:waypoint x="390.0" y="177.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow3" id="BPMNEdge_flow3">
+        <omgdi:waypoint x="495.0" y="177.0"></omgdi:waypoint>
+        <omgdi:waypoint x="530.0" y="177.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge bpmnElement="flow4" id="BPMNEdge_flow4">
+        <omgdi:waypoint x="443.0" y="131.0"></omgdi:waypoint>
+        <omgdi:waypoint x="442.0" y="86.0"></omgdi:waypoint>
+        <omgdi:waypoint x="547.0" y="160.0"></omgdi:waypoint>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
