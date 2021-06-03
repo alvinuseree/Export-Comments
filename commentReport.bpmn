@@ -31,9 +31,9 @@ public static String html2text(String html)
     return Jsoup.parse(html).text()
 }
 
-def exportDomainHistory = 
+def exportComments = 
 {
-  def exportHistory = 
+  def exportComm = 
   {
     exportFileSuffix = ".xlsx"
     baseURL = applicationApi.getInfo().getBaseUrl()
@@ -85,11 +85,7 @@ def exportDomainHistory =
 
       execution.setVariable('reportURL', exportFileUrl)
       execution.setVariable('exportFileName', exportFileName)
-
-      loggerApi.info("***File Attached to resource ${item.id} \t ${reportURL} with name ${exportFileName} ***")     
     }
-
-
     
     def rows = []
     def header = [:]
@@ -111,8 +107,8 @@ def exportDomainHistory =
                           .baseResourceId(asset.getId())
                           .build()).getResults()
       
-      def commentArray = 0
-	  def definitions = ""        
+    def commentArray = 0
+    def definitions = ""        
 
       for (comment in listComment)
       {       
@@ -122,19 +118,19 @@ def exportDomainHistory =
 
         if(commentArray == 0)
         {
-	        def definitionAsset = attributeApi.findAttributes(FindAttributesRequest.builder()
-	                                                            .assetId(asset.getId())
-	                                                            .typeIds([string2Uuid("00000000-0000-0000-0000-000000000202")])
-	                                                            .limit(1)
-	                                                            .build()).getResults()	        
-	        for(attribute in definitionAsset)
-	        {
-	          definitions = html2text(attribute.getValueAsString())
-	        }
+          def definitionAsset = attributeApi.findAttributes(FindAttributesRequest.builder()
+                                                              .assetId(asset.getId())
+                                                              .typeIds([string2Uuid("00000000-0000-0000-0000-000000000202")])
+                                                              .limit(1)
+                                                              .build()).getResults()          
+          for(attribute in definitionAsset)
+          {
+            definitions = html2text(attribute.getValueAsString())
+          }
        
         }  
-	    row.Definition = definitions
-	    rows.add(row)               
+        row.Definition = definitions
+        rows.add(row)               
         commentArray = commentArray + 1        
       }
       
@@ -145,11 +141,11 @@ def exportDomainHistory =
     createExportFile()
     
   }
-  exportHistory()
+  exportComm()
 }
 
-exportDomainHistory()
-loggerComponent.info("Finished creating file")
+exportComments()
+loggerApi.info("Finished creating file")
  </script>
     </scriptTask>
     <endEvent id="endevent1" name="End"></endEvent>
