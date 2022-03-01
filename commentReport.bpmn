@@ -96,7 +96,7 @@ def exportComments =
 
     loggerComponent.info("searching in ${item.id}")
     allAssets = assetApi.findAssets(FindAssetsRequest.builder()
-                      .communityId(string2Uuid(item.id))
+                      .communityId(string2Uuid("15c841b9-fa3f-430b-9c21-2a17b958d3bc"))
                       .limit(1000000)
                       .build()).getResults()
 
